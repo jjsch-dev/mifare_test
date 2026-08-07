@@ -83,9 +83,32 @@ static bool require_ready(const char *cmd)
     return true;
 }
 
-static bool require_card(const char *cmd)
+/* Card/register commands need the reader awake. poll/burst power-cycle it
+   (OEM parity: NRSTPD LOW + SPI bus released between bursts), so the first
+   command after a poll used to die with ESP_ERR_INVALID_STATE. Auto-recover:
+   mifare_power_up() is idempotent and doubles as the OEM recovery path.
+   burst/poll deliberately do NOT use this — they manage the wake themselves
+   so their waveform preamble stays byte-faithful for the scope A/B. */
+static bool require_awake(const char *cmd)
 {
     if (!require_ready(cmd)) {
+        return false;
+    }
+    if (!mifare_is_awake()) {
+        esp_err_t ret = mifare_power_up();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "%s: reader asleep and power-up failed: %s",
+                     cmd, esp_err_to_name(ret));
+            return false;
+        }
+        ESP_LOGI(TAG, "%s: reader was asleep (power-cycled by poll/burst) — powered up", cmd);
+    }
+    return true;
+}
+
+static bool require_card(const char *cmd)
+{
+    if (!require_awake(cmd)) {
         return false;
     }
     if (!s_card_selected) {
@@ -197,7 +220,7 @@ static int cmd_power(int argc, char **argv)
 
 static int cmd_version(int argc, char **argv)
 {
-    if (!require_ready("version")) {
+    if (!require_awake("version")) {
         return 1;
     }
     uint8_t ver = 0;
@@ -216,7 +239,7 @@ static int cmd_version(int argc, char **argv)
 
 static int do_reqx(const char *name, bool wakeup)
 {
-    if (!require_ready(name)) {
+    if (!require_awake(name)) {
         return 1;
     }
     uint16_t atqa = 0;
@@ -236,7 +259,7 @@ static int cmd_reqa(int argc, char **argv) { return do_reqx("reqa", false); }
 
 static int cmd_select(int argc, char **argv)
 {
-    if (!require_ready("select")) {
+    if (!require_awake("select")) {
         return 1;
     }
 
@@ -477,7 +500,7 @@ static int cmd_reg(int argc, char **argv)
         arg_print_errors(stderr, reg_args.end, argv[0]);
         return 1;
     }
-    if (!require_ready("reg")) {
+    if (!require_awake("reg")) {
         return 1;
     }
 
@@ -538,7 +561,7 @@ static const char *reg_name(uint8_t addr)
 
 static int cmd_dump(int argc, char **argv)
 {
-    if (!require_ready("dump")) {
+    if (!require_awake("dump")) {
         return 1;
     }
     printf(" addr  name             value\n");

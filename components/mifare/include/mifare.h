@@ -105,6 +105,15 @@ esp_err_t mifare_power_up(void);
 esp_err_t mifare_power_down(void);
 
 /**
+ * @brief True while the reader is powered and the SPI bus is attached.
+ *        False after mifare_power_down() — e.g. between 1 Hz poll cycles,
+ *        which power-cycle the reader for OEM parity. Card/register
+ *        commands must re-power (mifare_power_up()) before touching the
+ *        bus, or they fail with ESP_ERR_INVALID_STATE.
+ */
+bool mifare_is_awake(void);
+
+/**
  * @brief Lightweight wake for 1 Hz poll cycles: bus + NRSTPD HIGH +
  *        stabilization delay, WITHOUT re-init. Follow with
  *        mifare_idle_burst() (which writes the config subset, exactly like

@@ -424,6 +424,11 @@ esp_err_t mifare_power_down(void)
     return ESP_OK;
 }
 
+bool mifare_is_awake(void)
+{
+    return s.bus_ready;
+}
+
 esp_err_t mifare_version(uint8_t *version)
 {
     return mifare_read_reg(MFRC522_REG_VERSION, version);
