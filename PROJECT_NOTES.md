@@ -112,6 +112,7 @@ orchestrates the state machine — it contains no driver code.
 | D8 | **Mifare security: sector authentication + structured token, NOT UID-only** | UID of Mifare Classic is trivially clonable (UID-changeable cards cost ~$0.50). **2026-08-06 update:** the OEM *is* UID-only in practice — its MFAuthent uses a fixed key, always fails (Crypto1On never set), the result is ignored, and enrollment writes nothing to the card (proven by 3-card matrix + enrollment capture). Our auth+token scheme is a documented security upgrade, not a parity break. |
 | D9 | **Power management: two-mode RF policy matching OEM** | **2026-08-06 update (scope + logs):** OEM has two modes — (a) **zero cards enrolled:** RF only fires after GTX312L touch (event-driven); (b) **≥1 card enrolled:** continuous 1 Hz polling, no decay observed (30+ min scope watch). NRSTPD hard power-down between bursts keeps the reader at <10 µA while asleep. We replicate both modes for parity. |
 | D10 | Optional deviation: inactivity decay from 1 Hz polling back to touch-gated mode | 1 Hz polling costs ~0.4–0.6 mA average in RF alone — significant on 4×AA. OEM never decays (observed 30+ min). If we add a decay timeout it must be a documented, opt-in deviation. **Status: open decision.** |
+| D11 | Pre-compile parameters of every component live in its own `Kconfig` (menuconfig), default = OEM parity | Adopted 2026-08-07 after the bench-flag episode: build flags in the CMake cache are invisible and get lost on `fullclean`. Kconfig options are visible, self-documented and persisted in `sdkconfig`. First user: `CONFIG_MIFARE_BENCH_MODULE` (`components/mifare/Kconfig`). Legacy `-DCMAKE_C_FLAGS` overrides may be kept as fallback. |
 
 ### 4.1 Card security strategy (2026-08-04, reinforced 2026-08-06)
 
@@ -147,7 +148,7 @@ GROW R558-S, custom ELOCK firmware ("FPM.TXRF", Synochip `0xEF01` framing).
 * Full documentation: `components/fpm/README.md` (protocol notes, corrected
   ReadSysPara layout, scope captures).
 
-### Stage 2 — Mifare library (`mifare`, NZ3801-AB) — BENCH VALIDATED, pending lock-board port
+### Stage 2 — Mifare library (`mifare`, NZ3801-AB) — CLOSED 2026-08-07 (bench validated; lock-board port scheduled with integration)
 
 **Confirmed facts (scope + sniffer + processed log evidence):**
 
@@ -305,7 +306,27 @@ esp_err_t mifare_halt(void);
   `mifare_poll_works.txt`); InvTx2RFOn (0x83) does. This is a bench-module
   antenna artifact, NOT a silicon difference. Resolution: `OEM_TX_CONTROL_BURST`
   defaults to **0x03 (OEM parity)**; bench builds define
-  `-DMIFARE_BENCH_MODULE=1` to get 0x83 (see `mifare_regs.h`).
+  the Kconfig option `CONFIG_MIFARE_BENCH_MODULE` (menuconfig, persisted in
+  sdkconfig; legacy build flag still supported) to get 0x83 (see
+  `mifare_regs.h` and `components/mifare/Kconfig`).
+* **Harness fix (2026-08-07):** `poll`/`burst` end each cycle with
+  `mifare_power_down()` (OEM parity: NRSTPD LOW + SPI bus released), so the
+  first card command after a `poll` died with `ESP_ERR_INVALID_STATE`
+  (zero SPI traffic in the sniffer — software-side, never reached the
+  reader). Fix: new lib accessor `mifare_is_awake()` + harness
+  `require_awake()` that auto re-powers via the idempotent
+  `mifare_power_up()`. `burst`/`poll` keep managing the wake themselves so
+  their waveform preamble stays byte-faithful for the scope A/B.
+  Also explained: cycle 0 of a poll right after `select` misses the card
+  (still ACTIVE; WUPA only answers from IDLE/HALT) — the field drop between
+  cycles resets it to IDLE, so later cycles detect. Expected ISO14443-3.
+* **Bench artifact — alternating `wupa`:** bare `wupa` with a static card
+  answers OK / "no card" / OK / "no card". ISO14443-3: a successful WUPA
+  moves the card IDLE->READY; in READY the next WUPA is ignored (timeout)
+  and treated as an invalid frame, returning the card to IDLE — so the
+  following WUPA answers. Continuous-field bench artifact only; the lock's
+  field gating always boots the card to IDLE. Use `select` (state-tolerant)
+  for bench card I/O. Evidence: 2026-08-07 sniffer + console alternation.
 * Harness extras (NOT OEM behavior, bench tooling in `main/`): state-tolerant
   `select` (HLTA + WUPA + anticollision) because the bench RF field is not
   duty-cycled; `auth`/`read`/`write` commands for our sector-1 token scheme.
@@ -318,9 +339,10 @@ esp_err_t mifare_halt(void);
 3. Measure **current draw** of NZ3801 in power-down vs. antenna-active states
    (quantify savings; also quantify the real cost of permanent 1 Hz polling).
 
-**Remaining for Stage 2 completion:** port to the lock board (same driver,
-`-V 0xB2` self-test), scope A/B of `mifare_idle_burst()` vs OEM captures, then
-close out.
+**Stage 2 closed 2026-08-07.** Bench validation complete (full card I/O stack
++ 1 Hz poll replica, sniffer/scope/console evidence). Deferred to the
+integration stage: port to the lock board (same driver, `-V 0xB2` self-test)
+and scope A/B of `mifare_idle_burst()` vs OEM captures.
 
 ### Stage 3 — Keypad library (`keypad`, GTX312L)
 

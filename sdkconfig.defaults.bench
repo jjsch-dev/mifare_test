@@ -1,0 +1,5 @@
+# Bench overlay — apply ON TOP of sdkconfig.defaults for RC522-clone
+# Arduino module bring-up (enables the InvTx2 idle-burst workaround):
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.bench" build flash monitor
+# (or simply: idf.py menuconfig -> "Mifare reader" -> enable the bench option)
+CONFIG_MIFARE_BENCH_MODULE=y

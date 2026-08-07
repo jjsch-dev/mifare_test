@@ -1,0 +1,21 @@
+menu "Mifare reader (NZ3801 / MFRC522)"
+
+    config MIFARE_BENCH_MODULE
+        bool "Bench RC522-clone module antenna workaround"
+        default n
+        help
+            The OEM idle-burst antenna config (TxControlReg=0x03, TX1+TX2
+            without InvTx2) does NOT excite cards on RC522-clone Arduino
+            bench modules (A/B proven 2026-08-06: mifare_poll_fail.txt vs
+            mifare_poll_works.txt). This is a bench-module antenna artifact,
+            not a silicon difference.
+
+            Enable ONLY for bench bring-up with such modules: the idle burst
+            then uses InvTx2RFOn (0x83) so burst/poll detection works.
+
+            For the ES242F lock-board port leave this DISABLED — the lock's
+            NZ3801 antenna network works with the OEM value 0x03 (parity).
+
+            Equivalent legacy override: -DCMAKE_C_FLAGS=-DMIFARE_BENCH_MODULE=1
+
+endmenu

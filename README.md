@@ -38,20 +38,34 @@ idf.py set-target esp32s3
 idf.py build flash monitor
 ```
 
-### Bench antenna flag (RC522-clone modules only)
+### Bench antenna option (RC522-clone modules only)
 
 The OEM idle-burst antenna config (`TxControlReg=0x03`, TX1+TX2 without
 InvTx2) does **not** excite the bench module's antenna — proven A/B
 (`mifare_poll_fail.txt` vs `mifare_poll_works.txt`). This is a bench-module
 antenna artifact, not a silicon difference. For bench bring-up of
-`burst`/`poll`, build with:
+`burst`/`poll`, enable `CONFIG_MIFARE_BENCH_MODULE` — three equivalent ways:
 
 ```bash
+# 1. menuconfig (persisted in sdkconfig, survives rebuilds):
+idf.py menuconfig   # -> "Mifare reader (NZ3801 / MFRC522)" -> bench option
+
+# 2. sdkconfig overlay (one-liner, repo-tracked file):
+idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.bench" build flash monitor
+
+# 3. legacy build flag (still supported):
 idf.py -DCMAKE_C_FLAGS=-DMIFARE_BENCH_MODULE=1 build flash monitor
 ```
 
-This sets `OEM_TX_CONTROL_BURST=0x83` (InvTx2RFOn). **For the lock-board
-port, build without the flag** — OEM parity (0x03) is the default.
+Any of these sets `OEM_TX_CONTROL_BURST=0x83` (InvTx2RFOn). **For the
+lock-board port leave it disabled** — OEM parity (0x03) is the Kconfig
+default.
+
+Note: options 2 and 3 live in the `build/` cache — a fresh project copy or
+`idf.py fullclean` drops them. Option 1 survives in `sdkconfig` until the
+next clean. If `poll` suddenly stops detecting cards on the bench (while
+`select` still works), check this option first. Sniffer signature of a
+missing option: bursts write TxControlReg=0x03 while init writes 0x83.
 
 ## Quick start
 
@@ -158,6 +172,14 @@ unusable IRQs.*
 - Antenna artifact: bench module needs InvTx2RFOn during the idle burst to
   excite cards (`MIFARE_BENCH_MODULE=1`); the lock's antenna works with the
   OEM value 0x03. See *Bench antenna flag* above.
+- Bare `wupa` with a static card alternates OK / "no card": a successful WUPA
+  moves the card IDLE→READY, where the next WUPA is ignored (and returns the
+  card to IDLE). ISO14443-3 state machine, continuous-field bench artifact —
+  not a bug. Use `select` for bench card I/O.
+- After `poll`/`burst` the reader is left powered down (OEM parity). Card
+  commands auto-recover via `mifare_is_awake()` + `mifare_power_up()`
+  (harness `require_awake()`); `burst`/`poll` manage their own wake so the
+  waveform preamble stays byte-faithful for the scope A/B.
 - Harness extras (NOT OEM behavior, bench tooling in `main/`): state-tolerant
   `select` (HLTA + WUPA + anticollision) because the bench RF field is not
   duty-cycled; `auth`/`read`/`write` commands for the sector-1 token scheme.

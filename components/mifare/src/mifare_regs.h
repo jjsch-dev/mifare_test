@@ -145,10 +145,12 @@
  * stage does NOT excite cards with 0x03 during the burst; it needs
  * InvTx2RFOn (0x83) to get ATQA. This is a bench-module antenna artifact,
  * not a silicon difference — the lock board's NZ3801 antenna network is the
- * one the OEM 0x03 value was captured from. For bench bring-up build with:
- *   idf.py -DCMAKE_C_FLAGS=-DMIFARE_BENCH_MODULE=1 build
+ * one the OEM 0x03 value was captured from. Bench enable, either:
+ *   idf.py menuconfig -> "Mifare reader" -> "Bench RC522-clone module ..."
+ *   (CONFIG_MIFARE_BENCH_MODULE=y, persisted in sdkconfig), or the legacy
+ *   build flag -DCMAKE_C_FLAGS=-DMIFARE_BENCH_MODULE=1
  */
-#ifdef MIFARE_BENCH_MODULE
+#if defined(MIFARE_BENCH_MODULE) || CONFIG_MIFARE_BENCH_MODULE
 #define OEM_TX_CONTROL_BURST        0x83  /* Bench module: needs InvTx2 */
 #else
 #define OEM_TX_CONTROL_BURST        0x03  /* TX1+TX2, no InvTx2 (idle burst) */
