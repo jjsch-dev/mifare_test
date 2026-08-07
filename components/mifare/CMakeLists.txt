@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "src/mifare.c"
+        "src/mifare_classic.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        hal
+        esp_hal_gpspi
+    PRIV_REQUIRES
+        driver
+        esp_driver_spi
+        esp_driver_gpio
+        esp_timer
+)
